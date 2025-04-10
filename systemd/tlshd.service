@@ -6,6 +6,7 @@ Before=remote-fs-pre.target
 
 [Service]
 Type=simple
+Environment="SSLKEYLOGFILE=/root/keylogfile"
 ExecStart=/usr/sbin/tlshd
 
 [Install]
