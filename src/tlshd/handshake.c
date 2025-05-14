@@ -80,7 +80,8 @@ static void tlshd_save_nagle(gnutls_session_t session, int *saved)
  *
  */
 void tlshd_start_tls_handshake(gnutls_session_t session,
-			       struct tlshd_handshake_parms *parms)
+			       struct tlshd_handshake_parms *parms,
+			       bool server)
 {
 	int saved, ret;
 	char *desc;
@@ -124,7 +125,7 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
 	tlshd_log_debug("Session description: %s", desc);
 	gnutls_free(desc);
 
-	parms->session_status = tlshd_initialize_ktls(session);
+	parms->session_status = tlshd_initialize_ktls(session, server);
 }
 
 /**
@@ -169,7 +170,7 @@ void *tlshd_service_socket(void *session_ptr)
 		tlshd_log_debug("%s - %d: %d", __func__, __LINE__, ret);
 
 		tlshd_log_debug("%s - %d", __func__, __LINE__);
-		tlshd_initialize_ktls(*session);
+		parms.session_status = tlshd_initialize_ktls(*session, false);
 
 		break;
 	case HANDSHAKE_MSG_TYPE_CLIENTHELLO:

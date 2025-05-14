@@ -123,18 +123,6 @@ static int tlshd_genl_event_handler(struct nl_msg *msg,
 	    HANDSHAKE_HANDLER_CLASS_TLSHD)
 		return NL_SKIP;
 
-	int to_parent_fds[2];  /* [0] read, [1] write */
-	int to_child_fds[2];   /* [0] read, [1] write */
-
-	if (pipe(to_parent_fds) == -1) {
-		tlshd_log_nl_error("genlmsg_parse", -1);
-		return NL_SKIP;
-	}
-	if (pipe(to_child_fds) == -1) {
-		tlshd_log_nl_error("genlmsg_parse", -1);
-		return NL_SKIP;
-	}
-
 	g_thread_new("tlshd_socket", tlshd_service_socket, &global_session);
 
 	return NL_SKIP;
@@ -435,6 +423,8 @@ void tlshd_genl_done(struct tlshd_handshake_parms *parms)
 	struct nl_msg *msg;
 	int family_id, err;
 
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 	if (parms->sockfd == -1)
 		return;
 
@@ -460,6 +450,9 @@ void tlshd_genl_done(struct tlshd_handshake_parms *parms)
 		tlshd_log_error("Failed to set up message header.");
 		goto out_free;
 	}
+
+	tlshd_log_debug("%s - %d: session_status: %d",
+		__func__, __LINE__, parms->session_status);
 
 	err = nla_put_u32(msg, HANDSHAKE_A_DONE_STATUS,
 			  parms->session_status);

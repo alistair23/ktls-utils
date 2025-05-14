@@ -271,7 +271,7 @@ static void tlshd_tls13_server_x509_handshake(struct tlshd_handshake_parms *parm
 		goto out_free_creds;
 	}
 
-	tlshd_start_tls_handshake(session, parms);
+	tlshd_start_tls_handshake(session, parms, true);
 
 	gnutls_deinit(session);
 
@@ -359,7 +359,7 @@ static void tlshd_tls13_server_psk_handshake(struct tlshd_handshake_parms *parms
 		goto out_free_creds;
 	}
 
-	tlshd_start_tls_handshake(session, parms);
+	tlshd_start_tls_handshake(session, parms, true);
 
 	gnutls_deinit(session);
 

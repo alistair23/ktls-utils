@@ -107,7 +107,7 @@ static void tlshd_tls13_client_anon_handshake(struct tlshd_handshake_parms *parm
 	gnutls_session_set_verify_cert(session, parms->peername, 0);
 
 	tlshd_log_debug("%s - %d", __func__, __LINE__);
-	tlshd_start_tls_handshake(session, parms);
+	tlshd_start_tls_handshake(session, parms, false);
 
 	gnutls_deinit(session);
 
@@ -335,7 +335,7 @@ static void tlshd_tls13_client_x509_handshake(struct tlshd_handshake_parms *parm
 
 	tlshd_log_debug("%s - %d", __func__, __LINE__);
 
-	tlshd_start_tls_handshake(session, parms);
+	tlshd_start_tls_handshake(session, parms, false);
 
 	gnutls_deinit(session);
 
@@ -425,7 +425,7 @@ static void tlshd_tls13_client_psk_handshake_one(struct tlshd_handshake_parms *p
 	// }
 
 	tlshd_log_debug("start ClientHello handshake: session: %p", *parms->session);
-	tlshd_start_tls_handshake(*parms->session, parms);
+	tlshd_start_tls_handshake(*parms->session, parms, false);
 	if (!parms->session_status) {
 		/* PSK uses the same identity for both client and server */
 		parms->num_remote_peerids = 1;

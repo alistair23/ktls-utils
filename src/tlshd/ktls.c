@@ -124,12 +124,12 @@ static bool tlshd_setsockopt(int sock, unsigned read, const void *info,
 
 #if defined(TLS_CIPHER_AES_GCM_128)
 static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
-				      unsigned read)
+				      unsigned read, bool)
 {
 	struct tls12_crypto_info_aes_gcm_128 info = {
 		.info.version		= TLS_1_3_VERSION,
 		.info.cipher_type	= TLS_CIPHER_AES_GCM_128,
-		.rec_seq 		= {255, 255, 255, 255, 255, 255, 255, 220},
+		.rec_seq 		= {255, 255, 255, 255, 255, 255, 255, 230},
 	};
 	unsigned char seq_number[8];
 	gnutls_datum_t cipher_key;
@@ -159,7 +159,9 @@ static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
 	memcpy(info.salt, iv.data, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_GCM_128_KEY_SIZE);
 	// memcpy(info.session, session, sizeof(*session));
-	// memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+	// if (server) {
+	// 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+	// }
 
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
 }
@@ -284,7 +286,7 @@ static bool tlshd_set_chacha20_poly1305_info(gnutls_session_t session, int sock,
  *
  * Returns zero on success, or a positive errno value.
  */
-unsigned int tlshd_initialize_ktls(gnutls_session_t session)
+unsigned int tlshd_initialize_ktls(gnutls_session_t session, bool server)
 {
 	int sockin, sockout;
 
@@ -299,8 +301,8 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 	switch (gnutls_cipher_get(session)) {
 #if defined(TLS_CIPHER_AES_GCM_128)
 	case GNUTLS_CIPHER_AES_128_GCM:
-		return tlshd_set_aes_gcm128_info(session, sockout, 0) &&
-			tlshd_set_aes_gcm128_info(session, sockin, 1) ? 0 : EIO;
+		return tlshd_set_aes_gcm128_info(session, sockout, 0, server) &&
+			tlshd_set_aes_gcm128_info(session, sockin, 1, server) ? 0 : EIO;
 #endif
 #if defined(TLS_CIPHER_AES_GCM_256)
 	case GNUTLS_CIPHER_AES_256_GCM:
