@@ -327,6 +327,8 @@ static void tlshd_tls13_server_psk_handshake(struct tlshd_handshake_parms *parms
 	gnutls_session_t session;
 	int ret;
 
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 #ifdef HAVE_GNUTLS_PSK_ALLOCATE_CREDENTIALS2
 	ret = gnutls_psk_allocate_server_credentials2(&psk_cred,
 						      GNUTLS_MAC_NONE);
@@ -372,6 +374,8 @@ out_free_creds:
  */
 void tlshd_tls13_serverhello_handshake(struct tlshd_handshake_parms *parms)
 {
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 	switch (parms->auth_mode) {
 	case HANDSHAKE_AUTH_X509:
 		tlshd_tls13_server_x509_handshake(parms);

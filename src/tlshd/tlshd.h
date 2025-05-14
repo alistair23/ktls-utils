@@ -25,6 +25,8 @@ extern int tlshd_tls_debug;
 extern unsigned int tlshd_delay_done;
 extern int tlshd_stderr;
 
+extern gnutls_session_t global_session;
+
 struct nl_sock;
 
 struct tlshd_handshake_parms {
@@ -44,6 +46,9 @@ struct tlshd_handshake_parms {
 	int		msg_status;
 
 	unsigned int	session_status;
+	gnutls_session_t *session;
+
+	bool		key_update;
 
 	unsigned int	num_remote_peerids;
 	key_serial_t	remote_peerid[10];
@@ -68,7 +73,7 @@ bool tlshd_config_get_server_privkey(gnutls_privkey_t *privkey);
 /* handshake.c */
 extern void tlshd_start_tls_handshake(gnutls_session_t session,
 				      struct tlshd_handshake_parms *parms);
-extern void tlshd_service_socket(void);
+extern void *tlshd_service_socket(void *session_ptr);
 
 /* keyring.c */
 extern bool tlshd_keyring_get_psk_username(key_serial_t serial,

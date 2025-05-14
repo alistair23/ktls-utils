@@ -123,11 +123,19 @@ static int tlshd_genl_event_handler(struct nl_msg *msg,
 	    HANDSHAKE_HANDLER_CLASS_TLSHD)
 		return NL_SKIP;
 
-	if (!fork()) {
-		/* child */
-		tlshd_service_socket();
-		exit(EXIT_SUCCESS);
+	int to_parent_fds[2];  /* [0] read, [1] write */
+	int to_child_fds[2];   /* [0] read, [1] write */
+
+	if (pipe(to_parent_fds) == -1) {
+		tlshd_log_nl_error("genlmsg_parse", -1);
+		return NL_SKIP;
 	}
+	if (pipe(to_child_fds) == -1) {
+		tlshd_log_nl_error("genlmsg_parse", -1);
+		return NL_SKIP;
+	}
+
+	g_thread_new("tlshd_socket", tlshd_service_socket, &global_session);
 
 	return NL_SKIP;
 }

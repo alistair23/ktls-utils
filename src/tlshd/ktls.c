@@ -129,12 +129,15 @@ static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
 	struct tls12_crypto_info_aes_gcm_128 info = {
 		.info.version		= TLS_1_3_VERSION,
 		.info.cipher_type	= TLS_CIPHER_AES_GCM_128,
+		.rec_seq 		= {255, 255, 255, 255, 255, 255, 255, 220},
 	};
 	unsigned char seq_number[8];
 	gnutls_datum_t cipher_key;
 	gnutls_datum_t mac_key;
 	gnutls_datum_t iv;
 	int ret;
+
+	tlshd_log_debug("tlshd_set_aes_gcm128_info: sock: %d", sock);
 
 	if (tlshd_is_ktls_enabled(session, read))
 		return true;
@@ -155,7 +158,8 @@ static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
 		       TLS_CIPHER_AES_GCM_128_IV_SIZE);
 	memcpy(info.salt, iv.data, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_GCM_128_KEY_SIZE);
-	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+	// memcpy(info.session, session, sizeof(*session));
+	// memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
 
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
 }
@@ -287,7 +291,7 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 	if (setsockopt(gnutls_transport_get_int(session), SOL_TCP, TCP_ULP,
 		       "tls", sizeof("tls")) == -1) {
 		tlshd_log_perror("setsockopt(TLS_ULP)");
-		return EIO;
+		// return EIO;
 	}
 
 	gnutls_transport_get_int2(session, &sockin, &sockout);

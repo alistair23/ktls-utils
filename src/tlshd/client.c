@@ -51,6 +51,8 @@ static void tlshd_tls13_client_anon_handshake(struct tlshd_handshake_parms *parm
 	char *cafile;
 	int ret;
 
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 	ret = gnutls_certificate_allocate_credentials(&xcred);
 	if (ret != GNUTLS_E_SUCCESS) {
 		tlshd_log_gnutls_error(ret);
@@ -104,6 +106,7 @@ static void tlshd_tls13_client_anon_handshake(struct tlshd_handshake_parms *parm
 
 	gnutls_session_set_verify_cert(session, parms->peername, 0);
 
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
 	tlshd_start_tls_handshake(session, parms);
 
 	gnutls_deinit(session);
@@ -330,6 +333,8 @@ static void tlshd_tls13_client_x509_handshake(struct tlshd_handshake_parms *parm
 	gnutls_certificate_set_verify_function(xcred,
 					       tlshd_tls13_client_x509_verify_function);
 
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 	tlshd_start_tls_handshake(session, parms);
 
 	gnutls_deinit(session);
@@ -345,7 +350,6 @@ static void tlshd_tls13_client_psk_handshake_one(struct tlshd_handshake_parms *p
 	gnutls_mac_algorithm_t mac = GNUTLS_MAC_SHA256;
 #endif
 	gnutls_psk_client_credentials_t psk_cred;
-	gnutls_session_t session;
 #ifdef HAVE_GNUTLS_PSK_ALLOCATE_CREDENTIALS2
 	int version, type, hash;
 #endif
@@ -400,34 +404,39 @@ static void tlshd_tls13_client_psk_handshake_one(struct tlshd_handshake_parms *p
 	}
 
 	flags = GNUTLS_CLIENT;
-	ret = gnutls_init(&session, flags);
+	ret = gnutls_init(parms->session, flags);
 	if (ret != GNUTLS_E_SUCCESS) {
 		tlshd_log_gnutls_error(ret);
 		goto out_free_creds;
 	}
-	gnutls_transport_set_int(session, parms->sockfd);
-	gnutls_session_set_ptr(session, parms);
-	gnutls_credentials_set(session, GNUTLS_CRD_PSK, psk_cred);
+	gnutls_transport_set_int(*parms->session, parms->sockfd);
+	gnutls_session_set_ptr(*parms->session, parms);
+	gnutls_credentials_set(*parms->session, GNUTLS_CRD_PSK, psk_cred);
 
-	ret = tlshd_gnutls_priority_set(session, parms, key.size);
+	ret = tlshd_gnutls_priority_set(*parms->session, parms, key.size);
 	if (ret != GNUTLS_E_SUCCESS) {
 		tlshd_log_gnutls_error(ret);
 		goto out_free_creds;
 	}
 
-	tlshd_log_debug("start ClientHello handshake");
-	tlshd_start_tls_handshake(session, parms);
+	// if (parms->key_update) {
+	// 	const unsigned char seq_number[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+	// 	gnutls_record_set_state(parms->session, 0, seq_number);
+	// }
+
+	tlshd_log_debug("start ClientHello handshake: session: %p", *parms->session);
+	tlshd_start_tls_handshake(*parms->session, parms);
 	if (!parms->session_status) {
 		/* PSK uses the same identity for both client and server */
 		parms->num_remote_peerids = 1;
 		parms->remote_peerid[0] = peerid;
 	}
 
-	gnutls_deinit(session);
+// 	gnutls_deinit(session);
 
 out_free_creds:
-	gnutls_psk_free_client_credentials(psk_cred);
-	free(identity);
+// 	gnutls_psk_free_client_credentials(psk_cred);
+// 	free(identity);
 }
 
 static void tlshd_tls13_client_psk_handshake(struct tlshd_handshake_parms *parms)
