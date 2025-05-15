@@ -38,12 +38,99 @@
 #include <gnutls/gnutls.h>
 #include <gnutls/abstract.h>
 
+#include <linux/tls.h>
+
 #include <glib.h>
 
 #include "tlshd.h"
 #include "netlink.h"
 
 gnutls_session_t global_session;
+
+#define GNUTLS_HANDSHAKE 22
+
+int _gnutls_ktls_send_control_msg(gnutls_session_t session,
+				  unsigned char record_type, const void *data,
+				  size_t data_size)
+{
+	const char *buf = data;
+	ssize_t ret;
+	int sockin, sockout;
+	size_t data_to_send = data_size;
+
+	tlshd_log_debug("%s - %d: %d", __func__, __LINE__, data_to_send);
+
+	gnutls_transport_get_int2(session, &sockin, &sockout);
+
+	while (data_to_send > 0) {
+		char cmsg[CMSG_SPACE(sizeof(unsigned char))];
+		struct msghdr msg = { 0 };
+		struct iovec msg_iov; /* Vector of data to send/receive into. */
+		struct cmsghdr *hdr;
+
+		msg.msg_control = cmsg;
+		msg.msg_controllen = sizeof cmsg;
+
+		hdr = CMSG_FIRSTHDR(&msg);
+#if defined(__FreeBSD__)
+		hdr->cmsg_level = IPPROTO_TCP;
+#else
+		hdr->cmsg_level = SOL_TLS;
+#endif
+		hdr->cmsg_type = TLS_SET_RECORD_TYPE;
+		hdr->cmsg_len = CMSG_LEN(sizeof(unsigned char));
+
+		// construct record header
+		*CMSG_DATA(hdr) = record_type;
+		msg.msg_controllen = hdr->cmsg_len;
+
+		msg_iov.iov_base = (void *)buf;
+		msg_iov.iov_len = data_to_send;
+
+		msg.msg_iov = &msg_iov;
+		msg.msg_iovlen = 1;
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+		ret = sendmsg(sockout, &msg, MSG_DONTWAIT);
+
+		if (ret == -1) {
+			switch (errno) {
+			case EINTR:
+				if (data_to_send < data_size) {
+					return data_size - data_to_send;
+				} else {
+					return GNUTLS_E_INTERRUPTED;
+				}
+			case EAGAIN:
+				if (data_to_send < data_size) {
+					return data_size - data_to_send;
+				} else {
+					return GNUTLS_E_AGAIN;
+				}
+			default:
+				return GNUTLS_E_PUSH_ERROR;
+			}
+		}
+
+		buf += ret;
+		data_to_send -= ret;
+	}
+
+	tlshd_log_debug("%s - %d: %d", __func__, __LINE__, data_size);
+
+	return data_size;
+}
+
+int _gnutls_ktls_send_handshake_msg(gnutls_session_t session,
+				    gnutls_record_encryption_level_t,
+				    gnutls_handshake_description_t,
+				    const void *data, size_t data_size)
+{
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+	return _gnutls_ktls_send_control_msg(session, GNUTLS_HANDSHAKE, data,
+					     data_size);
+}
 
 static void tlshd_set_nagle(gnutls_session_t session, int val)
 {
@@ -166,6 +253,11 @@ void *tlshd_service_socket(void *session_ptr)
 		gnutls_record_set_state(*session, 0, seq_number);
 
 		tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+		gnutls_handshake_set_read_function(
+			*session, _gnutls_ktls_send_handshake_msg);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
 		ret = gnutls_session_key_update(*session, GNUTLS_KU_PEER);
 		tlshd_log_debug("%s - %d: %d", __func__, __LINE__, ret);
 
@@ -209,6 +301,27 @@ void *tlshd_service_socket(void *session_ptr)
 			tlshd_log_debug("Unsupported ip_proto (%d)", parms.ip_proto);
 			parms.session_status = EOPNOTSUPP;
 		}
+		break;
+	case HANDSHAKE_MSG_TYPE_SERVERKEYUPDATE:
+		tlshd_log_debug("HANDSHAKE_MSG_TYPE_SERVERKEYUPDATE!!!!");
+
+		parms.key_update = true;
+
+		const unsigned char seq_number[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+		gnutls_record_set_state(*session, 0, seq_number);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+		gnutls_handshake_set_read_function(
+			*session, _gnutls_ktls_send_handshake_msg);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+		ret = gnutls_session_key_update(*session, GNUTLS_KU_PEER);
+		tlshd_log_debug("%s - %d: %d", __func__, __LINE__, ret);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+		parms.session_status = tlshd_initialize_ktls(*session, false);
+
 		break;
 	default:
 		tlshd_log_debug("Unrecognized handshake type (%d)",
