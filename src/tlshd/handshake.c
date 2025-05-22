@@ -224,6 +224,7 @@ void *tlshd_service_socket(void *session_ptr)
 	gnutls_session_t *session = session_ptr;
 	struct tlshd_handshake_parms parms;
 	int ret;
+	const unsigned char seq_number[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 	if (tlshd_genl_get_handshake_parms(&parms) != 0)
 		goto out;
@@ -245,26 +246,6 @@ void *tlshd_service_socket(void *session_ptr)
 #endif
 
 	switch (parms.handshake_type) {
-	case HANDSHAKE_MSG_TYPE_CLIENTKEYUPDATE:
-		tlshd_log_debug("Calling key update!!!!: session: %p", *session);
-		parms.key_update = true;
-
-		const unsigned char seq_number[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-		gnutls_record_set_state(*session, 0, seq_number);
-
-		tlshd_log_debug("%s - %d", __func__, __LINE__);
-
-		gnutls_handshake_set_read_function(
-			*session, _gnutls_ktls_send_handshake_msg);
-
-		tlshd_log_debug("%s - %d", __func__, __LINE__);
-		ret = gnutls_session_key_update(*session, GNUTLS_KU_PEER);
-		tlshd_log_debug("%s - %d: %d", __func__, __LINE__, ret);
-
-		tlshd_log_debug("%s - %d", __func__, __LINE__);
-		parms.session_status = tlshd_initialize_ktls(*session, false);
-
-		break;
 	case HANDSHAKE_MSG_TYPE_CLIENTHELLO:
 		switch (parms.ip_proto) {
 		case IPPROTO_TCP:
@@ -287,10 +268,35 @@ void *tlshd_service_socket(void *session_ptr)
 			parms.session_status = EOPNOTSUPP;
 		}
 		break;
+	case HANDSHAKE_MSG_TYPE_CLIENTKEYUPDATE:
+		tlshd_log_debug("Calling key update!!!!: session: %p", *session);
+		parms.key_update = true;
+
+		gnutls_record_set_state(*session, 0, seq_number);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+		gnutls_handshake_set_read_function(
+			*session, _gnutls_ktls_send_handshake_msg);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+		ret = gnutls_session_key_update(*session, GNUTLS_KU_PEER);
+		tlshd_log_debug("%s - %d: %d", __func__, __LINE__, ret);
+
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+		parms.session_status = tlshd_initialize_ktls(*session, false);
+
+		break;
 	case HANDSHAKE_MSG_TYPE_SERVERHELLO:
 		switch (parms.ip_proto) {
 		case IPPROTO_TCP:
+
+			parms.key_update = false;
+			parms.session = session_ptr;
+
+			tlshd_log_debug("Calling handshake 1: session: %p", *parms.session);
 			tlshd_tls13_serverhello_handshake(&parms);
+			tlshd_log_debug("Calling handshake 2: session: %p", *parms.session);
 			break;
 #ifdef HAVE_GNUTLS_QUIC
 		case IPPROTO_QUIC:
@@ -307,7 +313,8 @@ void *tlshd_service_socket(void *session_ptr)
 
 		parms.key_update = true;
 
-		const unsigned char seq_number[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 		gnutls_record_set_state(*session, 0, seq_number);
 
 		tlshd_log_debug("%s - %d", __func__, __LINE__);
@@ -316,11 +323,11 @@ void *tlshd_service_socket(void *session_ptr)
 			*session, _gnutls_ktls_send_handshake_msg);
 
 		tlshd_log_debug("%s - %d", __func__, __LINE__);
-		ret = gnutls_session_key_update(*session, GNUTLS_KU_PEER);
+		ret = gnutls_update_keys(*session, 3);
 		tlshd_log_debug("%s - %d: %d", __func__, __LINE__, ret);
 
 		tlshd_log_debug("%s - %d", __func__, __LINE__);
-		parms.session_status = tlshd_initialize_ktls(*session, false);
+		parms.session_status = tlshd_initialize_ktls(*session, true);
 
 		break;
 	default:

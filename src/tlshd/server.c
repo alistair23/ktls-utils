@@ -299,6 +299,8 @@ static int tlshd_server_psk_cb(gnutls_session_t session,
 	key_serial_t psk;
 	long ret;
 
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
 	parms = gnutls_session_get_ptr(session);
 
 	ret = keyctl_search(KEY_SPEC_SESSION_KEYRING,
@@ -324,7 +326,6 @@ static int tlshd_server_psk_cb(gnutls_session_t session,
 static void tlshd_tls13_server_psk_handshake(struct tlshd_handshake_parms *parms)
 {
 	gnutls_psk_server_credentials_t psk_cred;
-	gnutls_session_t session;
 	int ret;
 
 	tlshd_log_debug("%s - %d", __func__, __LINE__);
@@ -343,28 +344,28 @@ static void tlshd_tls13_server_psk_handshake(struct tlshd_handshake_parms *parms
 	gnutls_psk_set_server_credentials_function(psk_cred,
 						   tlshd_server_psk_cb);
 
-	ret = gnutls_init(&session, GNUTLS_SERVER);
+	ret = gnutls_init(parms->session, GNUTLS_SERVER);
 	if (ret != GNUTLS_E_SUCCESS) {
 		tlshd_log_gnutls_error(ret);
 		goto out_free_creds;
 	}
-	gnutls_transport_set_int(session, parms->sockfd);
-	gnutls_session_set_ptr(session, parms);
+	gnutls_transport_set_int(*parms->session, parms->sockfd);
+	gnutls_session_set_ptr(*parms->session, parms);
 
-	gnutls_credentials_set(session, GNUTLS_CRD_PSK, psk_cred);
+	gnutls_credentials_set(*parms->session, GNUTLS_CRD_PSK, psk_cred);
 
-	ret = tlshd_gnutls_priority_set(session, parms, 0);
+	ret = tlshd_gnutls_priority_set(*parms->session, parms, 0);
 	if (ret) {
 		tlshd_log_gnutls_error(ret);
 		goto out_free_creds;
 	}
 
-	tlshd_start_tls_handshake(session, parms, true);
+	tlshd_start_tls_handshake(*parms->session, parms, true);
 
-	gnutls_deinit(session);
+	// gnutls_deinit(session);
 
 out_free_creds:
-	gnutls_psk_free_server_credentials(psk_cred);
+	// gnutls_psk_free_server_credentials(psk_cred);
 }
 
 /**
