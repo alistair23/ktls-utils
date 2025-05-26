@@ -80,6 +80,95 @@ bool tlshd_keyring_get_psk_username(key_serial_t serial, char **username)
 }
 
 /**
+ * tlshd_keyring_put_session - Retrieve a previous gnutls session
+ * @serial: Key serial number to look up
+ * @session: On success, filled in with a gnutls_session_t
+ *
+ * Caller must use gnutls_deinit() to free the session when finished.
+ *
+ * Return values:
+ *   %true: Success; @session has been initialized
+ *   %false: Failure
+ */
+key_serial_t tlshd_keyring_put_session(gnutls_session_t session)
+{
+	key_serial_t serial;
+	int ret;
+	gnutls_datum_t data;
+
+	tlshd_log_debug("gnutls_session_get_flags: 0x%x, session: %p",
+		gnutls_session_get_flags(session), session);
+
+	ret = gnutls_session_force_get_data(session, &data);
+
+	tlshd_log_debug("gnutls_session_get_data2: %d key size: %d", ret, data.size);
+
+	if (ret < 0) {
+		tlshd_log_perror("gnutls_session_force_get_data");
+		tlshd_log_error("Failed to get gnutls session.");
+		return -1;
+	}
+
+	GRand* rand = g_rand_new();
+	gchar* key_name = g_strdup_printf("ktls:gnutls-session-%d", g_rand_int(rand));
+	g_rand_free(rand);
+
+	serial = add_key("user", key_name, data.data, data.size,
+			 KEY_SPEC_SESSION_KEYRING);
+
+	g_free(key_name);
+
+	tlshd_log_debug("add_key: %x, size: %d", serial, data.size);
+
+	if (serial < 0) {
+		tlshd_log_perror("add_key");
+		tlshd_log_error("Failed to save gnutls session.");
+		return -1;
+	}
+
+	return serial;
+}
+
+/**
+ * tlshd_keyring_get_session - Retrieve a previous gnutls session
+ * @serial: Key serial number to look up
+ * @session: On success, filled in with a gnutls_session_t
+ *
+ * Caller must use gnutls_deinit() to free the session when finished.
+ *
+ * Return values:
+ *   %true: Success; @session has been initialized
+ *   %false: Failure
+ */
+bool tlshd_keyring_get_session(key_serial_t serial, gnutls_session_t session)
+{
+	int ret;
+	void *data;
+
+	tlshd_log_debug("get_key: serial: %x", serial);
+
+	ret = keyctl_read_alloc(serial, &data);
+	tlshd_log_debug("keyctl_read_alloc: %d", ret);
+	if (ret < 0) {
+		tlshd_log_perror("keyctl_read_alloc");
+		tlshd_log_error("Failed to read gnutls session.");
+		return false;
+	}
+
+	ret = gnutls_session_set_data(session, data, ret);
+	free(data);
+
+	tlshd_log_debug("gnutls_session_set_data: %d", ret);
+	if (ret < 0) {
+		tlshd_log_perror("gnutls_session_set_data");
+		tlshd_log_error("Failed to restore gnutls session.");
+		return false;
+	}
+
+	return true;
+}
+
+/**
  * tlshd_keyring_get_psk_key - Retrieve pre-shared key for PSK handshake
  * @serial: Key serial number to look up
  * @key: On success, filled in with pre-shared key

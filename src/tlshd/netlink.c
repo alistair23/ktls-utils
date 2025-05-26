@@ -101,6 +101,8 @@ tlshd_accept_nl_policy[HANDSHAKE_A_ACCEPT_MAX + 1] = {
 	[HANDSHAKE_A_ACCEPT_PEER_IDENTITY]	= { .type = NLA_U32, },
 	[HANDSHAKE_A_ACCEPT_CERTIFICATE]	= { .type = NLA_NESTED, },
 	[HANDSHAKE_A_ACCEPT_PEERNAME]		= { .type = NLA_STRING, },
+	[HANDSHAKE_A_ACCEPT_KEY_UPDATE_REQUEST] = { .type = NLA_U32, },
+	[HANDSHAKE_A_ACCEPT_KEY_SERIAL]		= { .type = NLA_U32, },
 	[HANDSHAKE_A_ACCEPT_KEYRING]		= { .type = NLA_U32, },
 };
 
@@ -252,10 +254,16 @@ static int tlshd_genl_valid_handler(struct nl_msg *msg, void *arg)
 
 	if (tb[HANDSHAKE_A_ACCEPT_SOCKFD]) {
 		parms->sockfd = nla_get_s32(tb[HANDSHAKE_A_ACCEPT_SOCKFD]);
-		if (getpeername(parms->sockfd, parms->peeraddr,
-				&parms->peeraddr_len) == -1) {
+
+		tlshd_log_debug("parms->sockfd: %d\n", parms->sockfd);
+		tlshd_log_debug("parms->peeraddr: %p\n", parms->peeraddr);
+		tlshd_log_debug("parms->peeraddr_len: %d\n", parms->peeraddr_len);
+
+		int ret = getpeername(parms->sockfd, parms->peeraddr, &parms->peeraddr_len);
+		tlshd_log_debug("getpeername(): %d\n", ret);
+		if (ret == -1) {
 			tlshd_log_perror("getpeername");
-			return NL_STOP;
+			// return NL_STOP;
 		}
 		optlen = sizeof(parms->ip_proto);
 		if (getsockopt(parms->sockfd, SOL_SOCKET, SO_PROTOCOL,
@@ -264,16 +272,22 @@ static int tlshd_genl_valid_handler(struct nl_msg *msg, void *arg)
 			return NL_STOP;
 		}
 	}
-	if (tb[HANDSHAKE_A_ACCEPT_MESSAGE_TYPE])
+	if (tb[HANDSHAKE_A_ACCEPT_MESSAGE_TYPE]) {
+		tlshd_log_debug("HANDSHAKE_A_ACCEPT_MESSAGE_TYPE\n");
 		parms->handshake_type = nla_get_u32(tb[HANDSHAKE_A_ACCEPT_MESSAGE_TYPE]);
+	}
 	if (tb[HANDSHAKE_A_ACCEPT_PEERNAME])
 		peername = nla_get_string(tb[HANDSHAKE_A_ACCEPT_PEERNAME]);
 	if (tb[HANDSHAKE_A_ACCEPT_KEYRING])
 		parms->keyring = nla_get_u32(tb[HANDSHAKE_A_ACCEPT_KEYRING]);
+	if (tb[HANDSHAKE_A_ACCEPT_KEY_SERIAL])
+		parms->key_serial = nla_get_u32(tb[HANDSHAKE_A_ACCEPT_KEY_SERIAL]);
 	if (tb[HANDSHAKE_A_ACCEPT_TIMEOUT])
 		parms->timeout_ms = nla_get_u32(tb[HANDSHAKE_A_ACCEPT_TIMEOUT]);
 	if (tb[HANDSHAKE_A_ACCEPT_AUTH_MODE])
 		parms->auth_mode = nla_get_u32(tb[HANDSHAKE_A_ACCEPT_AUTH_MODE]);
+	if (tb[HANDSHAKE_A_ACCEPT_KEY_UPDATE_REQUEST])
+		parms->key_update_type = nla_get_u32(tb[HANDSHAKE_A_ACCEPT_KEY_UPDATE_REQUEST]);
 
 	if (parms->keyring) {
 		err = keyctl_link(parms->keyring, KEY_SPEC_SESSION_KEYRING);
@@ -298,6 +312,8 @@ static int tlshd_genl_valid_handler(struct nl_msg *msg, void *arg)
 		}
 	}
 
+	tlshd_log_debug("    tlshd_genl_valid_handler good\n");
+
 	return NL_SKIP;
 }
 
@@ -316,6 +332,8 @@ static const struct tlshd_handshake_parms tlshd_default_handshake_parms = {
 	.num_peerids		= 0,
 	.msg_status		= 0,
 	.session_status		= EIO,
+	.key_serial		= TLS_NO_PRIVKEY,
+	.key_update_type	= HANDSHAKE_KEY_UPDATE_TYPE_UNSPEC,
 
 	.num_remote_peerids	= 0,
 };
@@ -427,6 +445,9 @@ void tlshd_genl_done(struct tlshd_handshake_parms *parms)
 	struct nl_msg *msg;
 	int family_id, err;
 
+	tlshd_log_debug("parms->num_remote_peerids: %d", parms->num_remote_peerids);
+	tlshd_log_debug("parms->remote_peerid[0]: 0x%x", parms->remote_peerid[0]);
+
 	if (parms->sockfd == -1)
 		return;
 
@@ -465,12 +486,21 @@ void tlshd_genl_done(struct tlshd_handshake_parms *parms)
 		tlshd_log_nl_error("nla_put sockfd", err);
 		goto out_free;
 	}
-	if (parms->session_status)
+	if (parms->session_status) {
+		tlshd_log_nl_error("send it early!", parms->session_status);
 		goto sendit;
+	}
 
 	err = tlshd_genl_put_remote_peerids(msg, parms);
 	if (err < 0)
 		goto out_free;
+
+	err = nla_put_s32(msg, HANDSHAKE_A_DONE_KEY_SERIAL,
+			  parms->key_serial);
+	if (err < 0) {
+		tlshd_log_nl_error("nla_put key serial", err);
+		goto out_free;
+	}
 
 sendit:
 	if (tlshd_delay_done) {

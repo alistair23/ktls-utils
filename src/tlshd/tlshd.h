@@ -36,6 +36,7 @@ struct tlshd_handshake_parms {
 	uint32_t	handshake_type;
 	unsigned int	timeout_ms;
 	uint32_t	auth_mode;
+	uint32_t	key_update_type;
 	key_serial_t	keyring;
 	key_serial_t	x509_cert;
 	key_serial_t	x509_privkey;
@@ -44,6 +45,7 @@ struct tlshd_handshake_parms {
 	int		msg_status;
 
 	unsigned int	session_status;
+	key_serial_t	key_serial;
 
 	unsigned int	num_remote_peerids;
 	key_serial_t	remote_peerid[10];
@@ -73,6 +75,9 @@ extern void tlshd_service_socket(void);
 /* keyring.c */
 extern bool tlshd_keyring_get_psk_username(key_serial_t serial,
 					   char **username);
+extern key_serial_t tlshd_keyring_put_session(gnutls_session_t session);
+extern bool tlshd_keyring_get_session(key_serial_t serial,
+	gnutls_session_t session);
 extern bool tlshd_keyring_get_psk_key(key_serial_t serial,
 				      gnutls_datum_t *key);
 extern bool tlshd_keyring_get_privkey(key_serial_t serial,
@@ -88,6 +93,7 @@ extern int tlshd_server_psk_cb(gnutls_session_t session,
 
 /* ktls.c */
 extern unsigned int tlshd_initialize_ktls(gnutls_session_t session);
+extern unsigned int tlshd_restore_ktls(gnutls_session_t session);
 extern int tlshd_gnutls_priority_init(void);
 extern int tlshd_gnutls_priority_set(gnutls_session_t session,
 				     struct tlshd_handshake_parms *parms,
