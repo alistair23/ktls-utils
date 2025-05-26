@@ -336,7 +336,7 @@ out_free_creds:
  *   %0: Matching key has been stored in @key
  *   %-1: Error during lookup, @key is not updated
  */
-static int tlshd_server_psk_cb(gnutls_session_t session,
+int tlshd_server_psk_cb(gnutls_session_t session,
 			       const char *username, gnutls_datum_t *key)
 {
 	struct tlshd_handshake_parms *parms;
