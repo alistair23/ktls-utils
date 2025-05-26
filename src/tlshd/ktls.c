@@ -379,8 +379,10 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 
 	if (setsockopt(gnutls_transport_get_int(session), SOL_TCP, TCP_ULP,
 		       "tls", sizeof("tls")) == -1) {
-		tlshd_log_perror("setsockopt(TLS_ULP)");
-		return EIO;
+		if (errno != EEXIST) {
+			tlshd_log_perror("setsockopt(TLS_ULP)");
+			return EIO;
+		}
 	}
 
 #if defined(HAVE_GNUTLS_RECORD_GET_MAX_SEND_SIZE) && defined(HAVE_TLS_TX_MAX_PAYLOAD_LEN)
