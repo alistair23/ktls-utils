@@ -287,7 +287,7 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 	if (setsockopt(gnutls_transport_get_int(session), SOL_TCP, TCP_ULP,
 		       "tls", sizeof("tls")) == -1) {
 		tlshd_log_perror("setsockopt(TLS_ULP)");
-		return EIO;
+		// return EIO;
 	}
 
 	gnutls_transport_get_int2(session, &sockin, &sockout);
