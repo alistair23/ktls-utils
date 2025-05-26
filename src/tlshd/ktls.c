@@ -31,6 +31,7 @@
 #include <netinet/tcp.h>
 #include <keyutils.h>
 
+#include <gnutls/crypto.h>
 #include <gnutls/gnutls.h>
 #include <gnutls/socket.h>
 #include <gnutls/abstract.h>
@@ -121,6 +122,103 @@ static bool tlshd_setsockopt(int sock, unsigned read, const void *info,
 	}
 	return false;
 }
+
+static bool tlshd_getsockopt(int sock, unsigned read, void *info,
+			     socklen_t *infolen)
+{
+	int ret;
+
+	ret = getsockopt(sock, SOL_TLS, read ? TLS_RX : TLS_TX, info, infolen);
+	if (!ret)
+		return true;
+
+	tlshd_log_perror("getsockopt(TLS_ULP)");
+
+	switch (errno) {
+	case EBADF:
+	case ENOTSOCK:
+		tlshd_log_error("The kernel's socket file descriptor is no longer valid.");
+		break;
+	case EINVAL:
+	case ENOENT:
+	case ENOPROTOOPT:
+		tlshd_log_error("The kernel does not support the requested algorithm.");
+		break;
+	default:
+		tlshd_log_perror("getsockopt");
+	}
+	return false;
+}
+
+#if defined(TLS_CIPHER_AES_GCM_128)
+static bool tlshd_get_aes_gcm128_info(gnutls_session_t session, int sock,
+				      unsigned read)
+{
+	struct tls12_crypto_info_aes_gcm_128 info = {
+		.info.version		= TLS_1_3_VERSION,
+		.info.cipher_type	= TLS_CIPHER_AES_GCM_128,
+	};
+	unsigned char seq_number[8];
+	gnutls_datum_t cipher_key;
+	gnutls_datum_t iv;
+	socklen_t infolen = sizeof(info);
+	int ret;
+
+	tlshd_log_debug("%s - %d: %d", __func__, __LINE__, read);
+
+	if (tlshd_is_ktls_enabled(session, read)) {
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+		return true;
+	}
+
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+	if (!tlshd_getsockopt(sock, read, &info, &infolen)) {
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+		return false;
+	}
+
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+	/* TLSv1.2 generates iv in the kernel */
+	// if (gnutls_protocol_get_version(session) == GNUTLS_TLS1_2) {
+	// 	info.info.version = TLS_1_2_VERSION;
+	// 	memcpy(seq_number, info.iv, TLS_CIPHER_AES_GCM_128_IV_SIZE);
+
+	// 	memcpy(iv.data, info.salt, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
+	// 	iv.size = TLS_CIPHER_AES_GCM_128_SALT_SIZE;
+	// } else {
+		iv.data = g_malloc0(TLS_CIPHER_AES_GCM_128_SALT_SIZE + TLS_CIPHER_AES_GCM_128_IV_SIZE);
+
+		memcpy(iv.data + TLS_CIPHER_AES_GCM_128_SALT_SIZE, info.iv,
+		       TLS_CIPHER_AES_GCM_128_IV_SIZE);
+
+		memcpy(iv.data, info.salt, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
+		iv.size = TLS_CIPHER_AES_GCM_128_SALT_SIZE + TLS_CIPHER_AES_GCM_128_IV_SIZE;
+	// }
+
+	tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+	cipher_key.data = info.key;
+	cipher_key.size = TLS_CIPHER_AES_GCM_128_KEY_SIZE;
+
+	memcpy(seq_number, info.rec_seq, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+
+	ret = gnutls_record_set_state2(session, read, NULL, &iv,
+				       &cipher_key, seq_number);
+
+	tlshd_log_debug("%s - %d: ret: %d", __func__, __LINE__, ret);
+
+	g_free(iv.data);
+
+	if (ret != GNUTLS_E_SUCCESS) {
+		tlshd_log_gnutls_error(ret);
+		return false;
+	}
+
+	return true;
+}
+#endif
 
 #if defined(TLS_CIPHER_AES_GCM_128)
 static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
@@ -239,6 +337,62 @@ static bool tlshd_set_aes_ccm128_info(gnutls_session_t session, int sock,
 }
 #endif
 
+#if defined(TLS_CIPHER_AES_CCM_128)
+static bool tlshd_get_aes_ccm128_info(gnutls_session_t session, int sock,
+				      unsigned read)
+{
+	struct tls12_crypto_info_aes_ccm_128 info = {
+		.info.version		= TLS_1_3_VERSION,
+		.info.cipher_type	= TLS_CIPHER_AES_CCM_128,
+	};
+	unsigned char seq_number[8];
+	gnutls_datum_t cipher_key;
+	gnutls_datum_t iv;
+	socklen_t infolen;
+	int ret;
+
+	if (tlshd_is_ktls_enabled(session, read))
+		return true;
+
+	if (!tlshd_getsockopt(sock, read, &info, &infolen)) {
+		return false;
+	}
+
+	/* TLSv1.2 generates iv in the kernel */
+	if (gnutls_protocol_get_version(session) == GNUTLS_TLS1_2) {
+		info.info.version = TLS_1_2_VERSION;
+		memcpy(seq_number, info.iv, TLS_CIPHER_AES_CCM_128_IV_SIZE);
+
+		memcpy(iv.data, info.salt, TLS_CIPHER_AES_CCM_128_SALT_SIZE);
+		iv.size = TLS_CIPHER_AES_CCM_128_SALT_SIZE;
+	} else {
+		memcpy(iv.data + TLS_CIPHER_AES_CCM_128_SALT_SIZE, info.iv,
+		       TLS_CIPHER_AES_CCM_128_IV_SIZE);
+
+		memcpy(iv.data, info.salt, TLS_CIPHER_AES_CCM_128_SALT_SIZE);
+		iv.size = TLS_CIPHER_AES_CCM_128_SALT_SIZE + TLS_CIPHER_AES_CCM_128_IV_SIZE;
+	}
+
+	memcpy(cipher_key.data, info.key, TLS_CIPHER_AES_CCM_128_KEY_SIZE);
+	cipher_key.size = TLS_CIPHER_AES_CCM_128_KEY_SIZE;
+
+	memcpy(seq_number, info.rec_seq, TLS_CIPHER_AES_CCM_128_REC_SEQ_SIZE);
+
+	ret = gnutls_record_set_state2(session, read, NULL, &iv,
+				       &cipher_key, seq_number);
+
+	free(cipher_key.data);
+	free(iv.data);
+
+	if (ret != GNUTLS_E_SUCCESS) {
+		tlshd_log_gnutls_error(ret);
+		return false;
+	}
+
+	return true;
+}
+#endif
+
 #if defined(TLS_CIPHER_CHACHA20_POLY1305)
 static bool tlshd_set_chacha20_poly1305_info(gnutls_session_t session, int sock,
 					     unsigned read)
@@ -280,6 +434,57 @@ static bool tlshd_set_chacha20_poly1305_info(gnutls_session_t session, int sock,
  *
  * Returns zero on success, or a positive errno value.
  */
+unsigned int tlshd_restore_ktls(gnutls_session_t session)
+{
+	int sockin, sockout;
+
+	// if (setsockopt(gnutls_transport_get_int(session), SOL_TCP, TCP_ULP,
+	// 	       "tls", sizeof("tls")) == -1) {
+	// 	tlshd_log_perror("setsockopt(TLS_ULP)");
+	// 	// return EIO;
+	// }
+
+	gnutls_transport_get_int2(session, &sockin, &sockout);
+
+	// gnutls_cipher_get(session) doesn't work after restore
+	tlshd_log_debug("gnutls_cipher_get(session): %d", gnutls_cipher_get(session));
+	tlshd_log_debug("tlshd_initialize_ktls: sockin: %d", sockin);
+	tlshd_log_debug("tlshd_initialize_ktls: sockout: %d", sockout);
+
+	switch (gnutls_cipher_get(session)) {
+#if defined(TLS_CIPHER_AES_GCM_128)
+	case GNUTLS_CIPHER_AES_128_GCM:
+		return tlshd_get_aes_gcm128_info(session, sockout, 0) &&
+			tlshd_get_aes_gcm128_info(session, sockin, 1) ? 0 : EIO;
+#endif
+#if defined(TLS_CIPHER_AES_GCM_256)
+	case GNUTLS_CIPHER_AES_256_GCM:
+		return tlshd_set_aes_gcm256_info(session, sockout, 0) &&
+			tlshd_set_aes_gcm256_info(session, sockin, 1) ? 0 : EIO;
+#endif
+#if defined(TLS_CIPHER_AES_CCM_128)
+	case GNUTLS_CIPHER_AES_128_CCM:
+		return tlshd_get_aes_ccm128_info(session, sockout, 0) &&
+			tlshd_get_aes_ccm128_info(session, sockin, 1) ? 0 : EIO;
+#endif
+#if defined(TLS_CIPHER_CHACHA20_POLY1305)
+	case GNUTLS_CIPHER_CHACHA20_POLY1305:
+		return tlshd_set_chacha20_poly1305_info(session, sockout, 0) &&
+			tlshd_set_chacha20_poly1305_info(session, sockin, 1) ? 0 : EIO;
+#endif
+	default:
+		tlshd_log_error("tlshd does not support the requested cipher: %d", gnutls_cipher_get(session));
+	}
+
+	return EIO;
+}
+
+/**
+ * tlshd_initialize_ktls - Initialize socket for use by kTLS
+ * @session: TLS session descriptor
+ *
+ * Returns zero on success, or a positive errno value.
+ */
 unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 {
 	int sockin, sockout;
@@ -291,6 +496,8 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 	}
 
 	gnutls_transport_get_int2(session, &sockin, &sockout);
+
+	tlshd_log_error("tlshd_initialize_ktls: gnutls_cipher_get(session): %d", gnutls_cipher_get(session));
 
 	switch (gnutls_cipher_get(session)) {
 #if defined(TLS_CIPHER_AES_GCM_128)

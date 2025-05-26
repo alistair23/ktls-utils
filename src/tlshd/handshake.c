@@ -207,6 +207,8 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
 
 	max_send_size = gnutls_record_get_max_send_size(session);
 	tlshd_set_record_size(session, max_send_size);
+
+	parms->key_serial = tlshd_keyring_put_session(session);
 }
 
 /**
@@ -215,6 +217,7 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
  */
 void tlshd_service_socket(void)
 {
+	gnutls_session_t session;
 	struct tlshd_handshake_parms parms;
 	int ret;
 
@@ -237,11 +240,14 @@ void tlshd_service_socket(void)
 			gnutls_get_system_config_file());
 #endif
 
+	tlshd_log_debug("parms.handshake_type: %d", parms.handshake_type);
+
 	switch (parms.handshake_type) {
 	case HANDSHAKE_MSG_TYPE_CLIENTHELLO:
 		switch (parms.ip_proto) {
 		case IPPROTO_TCP:
 			tlshd_tls13_clienthello_handshake(&parms);
+			tlshd_log_debug("Client Hello %d", parms.key_serial);
 			break;
 #ifdef HAVE_GNUTLS_QUIC
 		case IPPROTO_QUIC:
@@ -252,6 +258,66 @@ void tlshd_service_socket(void)
 			tlshd_log_debug("Unsupported ip_proto (%d)", parms.ip_proto);
 			parms.session_status = EOPNOTSUPP;
 		}
+		break;
+	case HANDSHAKE_MSG_TYPE_CLIENTKEYUPDATE:
+		tlshd_log_debug("Calling key update!!!! %d", parms.key_serial);
+
+		gnutls_init(&session, GNUTLS_CLIENT);
+
+		gnutls_handshake_set_read_function(
+			session, _gnutls_ktls_send_handshake_msg);
+
+		gnutls_transport_set_int(session, parms.sockfd);
+		gnutls_session_set_ptr(session, &parms);
+
+		tlshd_log_debug("start ClientHello keyupdate");
+
+		tlshd_keyring_get_session(parms.key_serial, session);
+		tlshd_log_debug("%s - %d", __func__, __LINE__);
+
+		ret = tlshd_restore_ktls(session);
+		tlshd_log_debug("tlshd_restore_ktls: %d", ret);
+
+		tlshd_log_debug("parms.key_update_type: %d", parms.key_update_type);
+
+		gnutls_record_set_max_size(session, 16384);
+
+		switch (parms.key_update_type) {
+		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
+			// We don't expect a KeyUpdate response
+			ret = gnutls_session_key_update(session, 0);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
+			// We received a KeyUpdate and the peer doesn't
+			// expect a response
+			ret = gnutls_session_trigger_key_update(session);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
+			// We received a KeyUpdate and the peer does
+			// expect a response
+			ret = gnutls_session_key_update(session, 0);
+			break;
+		default:
+			tlshd_log_debug("Unrecognized KeyUpdate type (%d)",
+				parms.key_update_type);
+		}
+
+		tlshd_log_debug("gnutls key_update: %d", ret);
+
+		parms.session_status = tlshd_initialize_ktls(session);
+		tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
+
+		if (!parms.session_status) {
+			key_serial_t peerid = g_array_index(parms.peerids, key_serial_t, 0);
+
+			tlshd_log_debug("parms.session_status: %d, 0x%x, 0x%x",
+				parms.session_status, parms.key_serial, peerid);
+
+			g_array_append_val(parms.remote_peerids, peerid);
+		}
+
+		parms.key_serial = tlshd_keyring_put_session(session);
+
 		break;
 	case HANDSHAKE_MSG_TYPE_SERVERHELLO:
 		switch (parms.ip_proto) {
@@ -267,6 +333,62 @@ void tlshd_service_socket(void)
 			tlshd_log_debug("Unsupported ip_proto (%d)", parms.ip_proto);
 			parms.session_status = EOPNOTSUPP;
 		}
+		break;
+	case HANDSHAKE_MSG_TYPE_SERVERKEYUPDATE:
+		tlshd_log_debug("HANDSHAKE_MSG_TYPE_SERVERKEYUPDATE");
+
+		gnutls_init(&session, GNUTLS_SERVER);
+
+		gnutls_handshake_set_read_function(
+			session, _gnutls_ktls_send_handshake_msg);
+
+		gnutls_transport_set_int(session, parms.sockfd);
+		gnutls_session_set_ptr(session, &parms);
+
+		tlshd_keyring_get_session(parms.key_serial, session);
+
+		ret = tlshd_restore_ktls(session);
+		tlshd_log_debug("tlshd_restore_ktls: %d", ret);
+
+		gnutls_record_set_max_size(session, 16384);
+
+		tlshd_log_debug("parms.key_update_type: %d", parms.key_update_type);
+
+		switch (parms.key_update_type) {
+		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
+			// We don't expect a KeyUpdate response
+			ret = gnutls_session_key_update(session, 0);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
+			// We received a KeyUpdate and the peer doesn't
+			// expect a response
+			ret = gnutls_session_trigger_key_update(session);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
+			// We received a KeyUpdate and the peer does
+			// expect a response
+			ret = gnutls_session_key_update(session, 0);
+			break;
+		default:
+			tlshd_log_debug("Unrecognized KeyUpdate type (%d)",
+				parms.key_update_type);
+		}
+
+		tlshd_log_debug("gnutls key_update: %d", ret);
+
+		gnutls_datum_t username, psk_key;
+		gnutls_psk_server_get_username2(session, &username);
+
+		tlshd_server_psk_cb(session, (const char *)username.data, &psk_key);
+
+		parms.session_status = tlshd_initialize_ktls(session);
+		key_serial_t remote_peerid = g_array_index(parms.remote_peerids, key_serial_t, 0);
+
+		tlshd_log_debug("parms.session_status: %d, %x, %x",
+			parms.session_status, remote_peerid, psk_key);
+
+		parms.key_serial = tlshd_keyring_put_session(session);
+
 		break;
 	default:
 		tlshd_log_debug("Unrecognized handshake type (%d)",
