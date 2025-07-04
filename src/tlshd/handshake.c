@@ -262,6 +262,8 @@ void tlshd_service_socket(void)
 		ret = tlshd_restore_ktls(session);
 		tlshd_log_debug("tlshd_restore_ktls: %d", ret);
 
+		tlshd_log_debug("parms.key_update_type: %d", parms.key_update_type);
+
 		switch (parms.key_update_type) {
 		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
 			// We don't expect a KeyUpdate response
