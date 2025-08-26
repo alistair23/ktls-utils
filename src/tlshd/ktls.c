@@ -206,8 +206,7 @@ static bool tlshd_get_aes_gcm128_info(gnutls_session_t session, int sock,
 
 	ret = gnutls_record_set_state2(session, read, NULL, &iv,
 				       &cipher_key, seq_number);
-
-	tlshd_log_debug("%s - %d: ret: %d", __func__, __LINE__, ret);
+	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
 
 	g_free(iv.data);
 
@@ -255,6 +254,8 @@ static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_GCM_128_KEY_SIZE);
 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
 
+	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
+
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
 }
 #endif
@@ -294,6 +295,8 @@ static bool tlshd_set_aes_gcm256_info(gnutls_session_t session, int sock,
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_GCM_256_KEY_SIZE);
 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_256_REC_SEQ_SIZE);
 
+	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
+
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
 }
 #endif
@@ -332,6 +335,8 @@ static bool tlshd_set_aes_ccm128_info(gnutls_session_t session, int sock,
 	memcpy(info.salt, iv.data, TLS_CIPHER_AES_CCM_128_SALT_SIZE);
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_CCM_128_KEY_SIZE);
 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_CCM_128_REC_SEQ_SIZE);
+
+	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
 
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
 }
@@ -378,6 +383,8 @@ static bool tlshd_get_aes_ccm128_info(gnutls_session_t session, int sock,
 
 	memcpy(seq_number, info.rec_seq, TLS_CIPHER_AES_CCM_128_REC_SEQ_SIZE);
 
+	tlshd_log_debug("%s - %d: seq_number[7]: %d", __func__, __LINE__, seq_number[7]);
+
 	ret = gnutls_record_set_state2(session, read, NULL, &iv,
 				       &cipher_key, seq_number);
 
@@ -423,6 +430,8 @@ static bool tlshd_set_chacha20_poly1305_info(gnutls_session_t session, int sock,
 	memcpy(info.iv, iv.data, TLS_CIPHER_CHACHA20_POLY1305_IV_SIZE);
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_CHACHA20_POLY1305_KEY_SIZE);
 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_CHACHA20_POLY1305_REC_SEQ_SIZE);
+
+	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
 
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
 }

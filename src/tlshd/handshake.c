@@ -59,6 +59,8 @@ int _gnutls_ktls_send_control_msg(gnutls_session_t session,
 
 	gnutls_transport_get_int2(session, &sockin, &sockout);
 
+	tlshd_log_notice("_gnutls_ktls_send_control_msg: data_size: %d\n", data_size);
+
 	while (data_to_send > 0) {
 		char cmsg[CMSG_SPACE(sizeof(unsigned char))];
 		struct msghdr msg = { 0 };
@@ -87,7 +89,19 @@ int _gnutls_ktls_send_control_msg(gnutls_session_t session,
 		msg.msg_iov = &msg_iov;
 		msg.msg_iovlen = 1;
 
+		tlshd_log_notice("_gnutls_ktls_send_control_msg: data_to_send: %d, length: %d\n", data_to_send, hdr->cmsg_len);
+
+		for (int i = 0; i < (int) hdr->cmsg_len; i++) {
+			tlshd_log_notice("hdr[%d]: %d\n", i, *(CMSG_DATA(hdr) + i));
+		}
+
+		for (int i = 0; i < (int) data_to_send; i++) {
+			tlshd_log_notice("buf[%d]: %d\n", i, buf[i]);
+		}
+
 		ret = sendmsg(sockout, &msg, MSG_DONTWAIT);
+
+		tlshd_log_notice("_gnutls_ktls_send_control_msg: sendmsg: %d\n", ret);
 
 		if (ret == -1) {
 			switch (errno) {
@@ -285,9 +299,11 @@ void tlshd_service_socket(void)
 		switch (parms.key_update_type) {
 		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
 			// We don't expect a KeyUpdate response
+			tlshd_log_debug("don't expect a KeyUpdate response...\n");
 			ret = gnutls_session_key_update(session, 0);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
+			tlshd_log_debug("HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED");
 			// We received a KeyUpdate and the peer doesn't
 			// expect a response
 			ret = gnutls_session_trigger_key_update(session);
@@ -357,16 +373,19 @@ void tlshd_service_socket(void)
 		switch (parms.key_update_type) {
 		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
 			// We don't expect a KeyUpdate response
+			tlshd_log_debug("We don't expect a KeyUpdate response\n");
 			ret = gnutls_session_key_update(session, 0);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
 			// We received a KeyUpdate and the peer doesn't
 			// expect a response
+			tlshd_log_debug("We received a KeyUpdate and the peer doesn't\n");
 			ret = gnutls_session_trigger_key_update(session);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
 			// We received a KeyUpdate and the peer does
 			// expect a response
+			tlshd_log_debug("We received a KeyUpdate and the peer does\n");
 			ret = gnutls_session_key_update(session, 0);
 			break;
 		default:
