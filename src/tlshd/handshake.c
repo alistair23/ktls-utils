@@ -217,7 +217,7 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
 	tlshd_log_debug("Session description: %s", desc);
 	gnutls_free(desc);
 
-	parms->session_status = tlshd_initialize_ktls(session);
+	parms->session_status = tlshd_initialize_ktls(session, true, true);
 
 	max_send_size = gnutls_record_get_max_send_size(session);
 	tlshd_set_record_size(session, max_send_size);
@@ -286,7 +286,9 @@ void tlshd_service_socket(void)
 
 		tlshd_log_debug("start ClientHello keyupdate");
 
-		tlshd_keyring_get_session(parms.key_serial, session);
+		if (!tlshd_keyring_get_session(parms.key_serial, session)) {
+			goto out;
+		}
 		tlshd_log_debug("%s - %d", __func__, __LINE__);
 
 		ret = tlshd_restore_ktls(session);
@@ -301,17 +303,28 @@ void tlshd_service_socket(void)
 			// We don't expect a KeyUpdate response
 			tlshd_log_debug("don't expect a KeyUpdate response...\n");
 			ret = gnutls_session_key_update(session, 0);
+
+			parms.session_status = tlshd_initialize_ktls(session, false, true);
+			tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
 			tlshd_log_debug("HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED");
 			// We received a KeyUpdate and the peer doesn't
 			// expect a response
-			ret = gnutls_session_trigger_key_update(session);
+			ret = gnutls_handshake_update_receiving_key(session);
+
+			parms.session_status = tlshd_initialize_ktls(session, true, false);
+			tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
 			// We received a KeyUpdate and the peer does
 			// expect a response
-			ret = gnutls_session_key_update(session, 0);
+			ret = gnutls_session_key_update(session, GNUTLS_KU_PEER);
+
+			// Only update our sending keys, we expect to update our
+			// receive keys when the server triggers a KeyUpdate
+			parms.session_status = tlshd_initialize_ktls(session, false, true);
+			tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 			break;
 		default:
 			tlshd_log_debug("Unrecognized KeyUpdate type (%d)",
@@ -319,9 +332,6 @@ void tlshd_service_socket(void)
 		}
 
 		tlshd_log_debug("gnutls key_update: %d", ret);
-
-		parms.session_status = tlshd_initialize_ktls(session);
-		tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 
 		if (!parms.session_status) {
 			key_serial_t peerid = g_array_index(parms.peerids, key_serial_t, 0);
@@ -361,7 +371,9 @@ void tlshd_service_socket(void)
 		gnutls_transport_set_int(session, parms.sockfd);
 		gnutls_session_set_ptr(session, &parms);
 
-		tlshd_keyring_get_session(parms.key_serial, session);
+		if (!tlshd_keyring_get_session(parms.key_serial, session)) {
+			goto out;
+		}
 
 		ret = tlshd_restore_ktls(session);
 		tlshd_log_debug("tlshd_restore_ktls: %d", ret);
@@ -375,18 +387,29 @@ void tlshd_service_socket(void)
 			// We don't expect a KeyUpdate response
 			tlshd_log_debug("We don't expect a KeyUpdate response\n");
 			ret = gnutls_session_key_update(session, 0);
+
+			parms.session_status = tlshd_initialize_ktls(session, false, true);
+			tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
 			// We received a KeyUpdate and the peer doesn't
 			// expect a response
 			tlshd_log_debug("We received a KeyUpdate and the peer doesn't\n");
-			ret = gnutls_session_trigger_key_update(session);
+			ret = gnutls_handshake_update_receiving_key(session);
+
+			parms.session_status = tlshd_initialize_ktls(session, true, false);
+			tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 			break;
 		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
 			// We received a KeyUpdate and the peer does
 			// expect a response
 			tlshd_log_debug("We received a KeyUpdate and the peer does\n");
 			ret = gnutls_session_key_update(session, 0);
+
+			// Only update our sending keys, we expect to update our
+			// receive keys when the client triggers a KeyUpdate
+			parms.session_status = tlshd_initialize_ktls(session, false, true);
+			tlshd_log_debug("tlshd_initialize_ktls: %d", parms.session_status);
 			break;
 		default:
 			tlshd_log_debug("Unrecognized KeyUpdate type (%d)",
@@ -400,7 +423,6 @@ void tlshd_service_socket(void)
 
 		tlshd_server_psk_cb(session, (const char *)username.data, &psk_key);
 
-		parms.session_status = tlshd_initialize_ktls(session);
 		key_serial_t remote_peerid = g_array_index(parms.remote_peerids, key_serial_t, 0);
 
 		tlshd_log_debug("parms.session_status: %d, %x, %x",

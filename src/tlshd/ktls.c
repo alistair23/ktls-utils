@@ -254,6 +254,16 @@ static bool tlshd_set_aes_gcm128_info(gnutls_session_t session, int sock,
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_GCM_128_KEY_SIZE);
 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
 
+	for (int i = 0; i < TLS_CIPHER_AES_GCM_128_SALT_SIZE; i++) {
+		tlshd_log_debug("AES_GCM_128 info.salt[%d]: 0x%d", i, info.salt[i]);
+	}
+	for (int i = 0; i < TLS_CIPHER_AES_GCM_128_KEY_SIZE; i++) {
+		tlshd_log_debug("info.key[%d]: 0x%d", i, info.key[i]);
+	}
+	for (int i = 0; i < TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE; i++) {
+		tlshd_log_debug("info.rec_seq[%d]: 0x%d", i, info.rec_seq[i]);
+	}
+
 	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
 
 	return tlshd_setsockopt(sock, read, &info, sizeof(info));
@@ -335,6 +345,17 @@ static bool tlshd_set_aes_ccm128_info(gnutls_session_t session, int sock,
 	memcpy(info.salt, iv.data, TLS_CIPHER_AES_CCM_128_SALT_SIZE);
 	memcpy(info.key, cipher_key.data, TLS_CIPHER_AES_CCM_128_KEY_SIZE);
 	memcpy(info.rec_seq, seq_number, TLS_CIPHER_AES_CCM_128_REC_SEQ_SIZE);
+
+
+	for (int i = 0; i < TLS_CIPHER_AES_CCM_128_SALT_SIZE; i++) {
+		tlshd_log_debug("AES_CCM_128 info.salt[%d]: 0x%d", i, info.salt[i]);
+	}
+	for (int i = 0; i < TLS_CIPHER_AES_CCM_128_KEY_SIZE; i++) {
+		tlshd_log_debug("info.key[%d]: 0x%d", i, info.key[i]);
+	}
+	for (int i = 0; i < TLS_CIPHER_AES_CCM_128_REC_SEQ_SIZE; i++) {
+		tlshd_log_debug("info.rec_seq[%d]: 0x%d", i, info.rec_seq[i]);
+	}
 
 	tlshd_log_debug("%s - %d: ret: %d: seq_number[7]: %d", __func__, __LINE__, ret, seq_number[7]);
 
@@ -494,7 +515,7 @@ unsigned int tlshd_restore_ktls(gnutls_session_t session)
  *
  * Returns zero on success, or a positive errno value.
  */
-unsigned int tlshd_initialize_ktls(gnutls_session_t session)
+unsigned int tlshd_initialize_ktls(gnutls_session_t session, bool read, bool write)
 {
 	int sockin, sockout;
 
@@ -511,23 +532,51 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 	switch (gnutls_cipher_get(session)) {
 #if defined(TLS_CIPHER_AES_GCM_128)
 	case GNUTLS_CIPHER_AES_128_GCM:
-		return tlshd_set_aes_gcm128_info(session, sockout, 0) &&
-			tlshd_set_aes_gcm128_info(session, sockin, 1) ? 0 : EIO;
+		if (write) {
+			if (!tlshd_set_aes_gcm128_info(session, sockout, 0))
+				return EIO;
+		}
+		if (read) {
+			if (!tlshd_set_aes_gcm128_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 #if defined(TLS_CIPHER_AES_GCM_256)
 	case GNUTLS_CIPHER_AES_256_GCM:
-		return tlshd_set_aes_gcm256_info(session, sockout, 0) &&
-			tlshd_set_aes_gcm256_info(session, sockin, 1) ? 0 : EIO;
+		if (write) {
+			if (!tlshd_set_aes_gcm256_info(session, sockout, 0))
+				return EIO;
+		}
+		if (read) {
+			if (!tlshd_set_aes_gcm256_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 #if defined(TLS_CIPHER_AES_CCM_128)
 	case GNUTLS_CIPHER_AES_128_CCM:
-		return tlshd_set_aes_ccm128_info(session, sockout, 0) &&
-			tlshd_set_aes_ccm128_info(session, sockin, 1) ? 0 : EIO;
+		if (write) {
+			if (!tlshd_set_aes_ccm128_info(session, sockout, 0))
+				return EIO;
+		}
+		if (read) {
+			if (!tlshd_set_aes_ccm128_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 #if defined(TLS_CIPHER_CHACHA20_POLY1305)
 	case GNUTLS_CIPHER_CHACHA20_POLY1305:
-		return tlshd_set_chacha20_poly1305_info(session, sockout, 0) &&
-			tlshd_set_chacha20_poly1305_info(session, sockin, 1) ? 0 : EIO;
+		if (write) {
+			if (!tlshd_set_chacha20_poly1305_info(session, sockout, 0))
+				return EIO;
+		}
+		if (read) {
+			if (!tlshd_set_chacha20_poly1305_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 	default:
 		tlshd_log_error("tlshd does not support the requested cipher.");

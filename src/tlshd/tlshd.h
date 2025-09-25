@@ -90,7 +90,7 @@ extern int tlshd_server_psk_cb(gnutls_session_t session,
 			       const char *username, gnutls_datum_t *key);
 
 /* ktls.c */
-extern unsigned int tlshd_initialize_ktls(gnutls_session_t session);
+extern unsigned int tlshd_initialize_ktls(gnutls_session_t session, bool read, bool write);
 extern unsigned int tlshd_restore_ktls(gnutls_session_t session);
 extern int tlshd_gnutls_priority_init(void);
 extern int tlshd_gnutls_priority_set(gnutls_session_t session,
