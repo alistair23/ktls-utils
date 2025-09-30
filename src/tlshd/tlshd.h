@@ -92,6 +92,9 @@ extern void tlshd_service_socket(void);
 /* keyring.c */
 extern bool tlshd_keyring_get_psk_username(key_serial_t serial,
 					   char **username);
+extern key_serial_t tlshd_keyring_put_session(gnutls_session_t session);
+extern bool tlshd_keyring_get_session(key_serial_t serial,
+	gnutls_session_t session);
 extern bool tlshd_keyring_get_psk_key(key_serial_t serial,
 				      gnutls_datum_t *key);
 extern bool tlshd_keyring_get_privkey(key_serial_t serial,
