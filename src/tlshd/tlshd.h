@@ -62,6 +62,12 @@ enum peer_type {
 	PEER_TYPE_SERVER,
 };
 
+enum sock_direction {
+	READ,
+	WRITE,
+	READ_WRITE
+};
+
 /* client.c */
 extern void tlshd_tls13_clienthello_handshake(struct tlshd_handshake_parms *parms);
 extern void tlshd_quic_clienthello_handshake(struct tlshd_handshake_parms *parms);
@@ -97,7 +103,7 @@ extern key_serial_t tlshd_keyring_create_cert(gnutls_x509_crt_t cert,
 extern int tlshd_keyring_link_session(const char *keyring);
 
 /* ktls.c */
-extern unsigned int tlshd_initialize_ktls(gnutls_session_t session);
+extern unsigned int tlshd_initialize_ktls(gnutls_session_t session, enum sock_direction direction);
 extern int tlshd_gnutls_priority_init(void);
 extern int tlshd_gnutls_priority_set(gnutls_session_t session,
 				     const struct tlshd_handshake_parms *parms,

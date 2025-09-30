@@ -125,7 +125,7 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
 	tlshd_log_debug("Session description: %s", desc);
 	gnutls_free(desc);
 
-	parms->session_status = tlshd_initialize_ktls(session);
+	parms->session_status = tlshd_initialize_ktls(session, READ_WRITE);
 }
 
 /**

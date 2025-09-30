@@ -373,7 +373,7 @@ static int tlshd_set_record_size(gnutls_session_t session)
  *
  * @returns zero on success, or a positive errno value.
  */
-unsigned int tlshd_initialize_ktls(gnutls_session_t session)
+unsigned int tlshd_initialize_ktls(gnutls_session_t session, enum sock_direction direction)
 {
 	int sockin, sockout;
 
@@ -395,23 +395,51 @@ unsigned int tlshd_initialize_ktls(gnutls_session_t session)
 	switch (gnutls_cipher_get(session)) {
 #if defined(TLS_CIPHER_AES_GCM_128)
 	case GNUTLS_CIPHER_AES_128_GCM:
-		return tlshd_set_aes_gcm128_info(session, sockout, 0) &&
-			tlshd_set_aes_gcm128_info(session, sockin, 1) ? 0 : EIO;
+		if (direction == WRITE || direction == READ_WRITE) {
+			if (!tlshd_set_aes_gcm128_info(session, sockout, 0))
+				return EIO;
+		}
+		if (direction == READ || direction == READ_WRITE) {
+			if (!tlshd_set_aes_gcm128_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 #if defined(TLS_CIPHER_AES_GCM_256)
 	case GNUTLS_CIPHER_AES_256_GCM:
-		return tlshd_set_aes_gcm256_info(session, sockout, 0) &&
-			tlshd_set_aes_gcm256_info(session, sockin, 1) ? 0 : EIO;
+		if (direction == WRITE || direction == READ_WRITE) {
+			if (!tlshd_set_aes_gcm256_info(session, sockout, 0))
+				return EIO;
+		}
+		if (direction == READ || direction == READ_WRITE) {
+			if (!tlshd_set_aes_gcm256_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 #if defined(TLS_CIPHER_AES_CCM_128)
 	case GNUTLS_CIPHER_AES_128_CCM:
-		return tlshd_set_aes_ccm128_info(session, sockout, 0) &&
-			tlshd_set_aes_ccm128_info(session, sockin, 1) ? 0 : EIO;
+		if (direction == WRITE || direction == READ_WRITE) {
+			if (!tlshd_set_aes_ccm128_info(session, sockout, 0))
+				return EIO;
+		}
+		if (direction == READ || direction == READ_WRITE) {
+			if (!tlshd_set_aes_ccm128_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 #if defined(TLS_CIPHER_CHACHA20_POLY1305)
 	case GNUTLS_CIPHER_CHACHA20_POLY1305:
-		return tlshd_set_chacha20_poly1305_info(session, sockout, 0) &&
-			tlshd_set_chacha20_poly1305_info(session, sockin, 1) ? 0 : EIO;
+		if (direction == WRITE || direction == READ_WRITE) {
+			if (!tlshd_set_chacha20_poly1305_info(session, sockout, 0))
+				return EIO;
+		}
+		if (direction == READ || direction == READ_WRITE) {
+			if (!tlshd_set_chacha20_poly1305_info(session, sockin, 1))
+				return EIO;
+		}
+		return 0;
 #endif
 	default:
 		tlshd_log_error("tlshd does not support the requested cipher.");
