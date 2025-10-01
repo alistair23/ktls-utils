@@ -214,6 +214,8 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
 	gnutls_free(desc);
 
 	parms->session_status = tlshd_initialize_ktls(session, READ_WRITE);
+
+	parms->key_serial = tlshd_keyring_put_session(session);
 }
 
 /**
@@ -221,6 +223,7 @@ void tlshd_start_tls_handshake(gnutls_session_t session,
  */
 void tlshd_service_socket(void)
 {
+	gnutls_session_t session;
 	struct tlshd_handshake_parms parms;
 	int ret;
 
@@ -259,6 +262,66 @@ void tlshd_service_socket(void)
 			parms.session_status = EOPNOTSUPP;
 		}
 		break;
+	case HANDSHAKE_MSG_TYPE_CLIENTKEYUPDATE:
+		gnutls_init(&session, GNUTLS_CLIENT);
+
+		gnutls_handshake_set_read_function(
+			session, gnutls_ktls_send_handshake_msg);
+
+		gnutls_transport_set_int(session, parms.sockfd);
+		gnutls_session_set_ptr(session, &parms);
+
+		if (!tlshd_keyring_get_session(parms.key_serial, session))
+			goto deinit;
+
+		if (tlshd_restore_ktls(session))
+			goto deinit;
+
+		gnutls_record_set_max_size(session, 16384);
+
+		switch (parms.key_update_type) {
+		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
+			/* We don't expect a KeyUpdate response */
+			if (gnutls_session_key_update(session, 0))
+				goto deinit;
+
+			parms.session_status = tlshd_initialize_ktls(session, WRITE);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
+			/* We received a KeyUpdate and the peer doesn't
+			 * expect a response
+			 */
+			if (gnutls_handshake_update_receiving_key(session))
+				goto deinit;
+
+			parms.session_status = tlshd_initialize_ktls(session, READ);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
+			/* We received a KeyUpdate and the peer does
+			 * expect a response
+			 */
+			if (gnutls_handshake_update_receiving_key(session))
+				goto deinit;
+
+			if (gnutls_session_key_update(session, 0))
+				goto deinit;
+
+			parms.session_status = tlshd_initialize_ktls(session, READ_WRITE);
+			break;
+		default:
+			tlshd_log_debug("Unrecognized KeyUpdate type (%d)",
+				parms.key_update_type);
+		}
+
+		if (!parms.session_status) {
+			key_serial_t peerid = g_array_index(parms.peerids, key_serial_t, 0);
+
+			g_array_append_val(parms.remote_peerids, peerid);
+		}
+
+		parms.key_serial = tlshd_keyring_put_session(session);
+
+		break;
 	case HANDSHAKE_MSG_TYPE_SERVERHELLO:
 		switch (parms.ip_proto) {
 		case IPPROTO_TCP:
@@ -274,11 +337,72 @@ void tlshd_service_socket(void)
 			parms.session_status = EOPNOTSUPP;
 		}
 		break;
+	case HANDSHAKE_MSG_TYPE_SERVERKEYUPDATE:
+		gnutls_datum_t username, psk_key;
+
+		gnutls_init(&session, GNUTLS_SERVER);
+
+		gnutls_handshake_set_read_function(
+			session, gnutls_ktls_send_handshake_msg);
+
+		gnutls_transport_set_int(session, parms.sockfd);
+		gnutls_session_set_ptr(session, &parms);
+
+		if (!tlshd_keyring_get_session(parms.key_serial, session))
+			goto deinit;
+
+		if (tlshd_restore_ktls(session))
+			goto deinit;
+
+		gnutls_record_set_max_size(session, 16384);
+
+		switch (parms.key_update_type) {
+		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
+			/* We don't expect a KeyUpdate response */
+			if (gnutls_session_key_update(session, 0))
+				goto deinit;
+
+			parms.session_status = tlshd_initialize_ktls(session, WRITE);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED:
+			/* We received a KeyUpdate and the peer doesn't
+			 * expect a response
+			 */
+			if (gnutls_handshake_update_receiving_key(session))
+				goto deinit;
+
+			parms.session_status = tlshd_initialize_ktls(session, READ);
+			break;
+		case HANDSHAKE_KEY_UPDATE_TYPE_RECEIVED_REQUEST_UPDATE:
+			/* We received a KeyUpdate and the peer does
+			 * expect a response
+			 */
+			if (gnutls_handshake_update_receiving_key(session))
+				goto deinit;
+
+			if (gnutls_session_key_update(session, 0))
+				goto deinit;
+
+			parms.session_status = tlshd_initialize_ktls(session, READ_WRITE);
+			break;
+		default:
+			tlshd_log_debug("Unrecognized KeyUpdate type (%d)",
+				parms.key_update_type);
+		}
+
+		gnutls_psk_server_get_username2(session, &username);
+
+		tlshd_server_psk_cb(session, (const char *)username.data, &psk_key);
+
+		parms.key_serial = tlshd_keyring_put_session(session);
+
+		break;
 	default:
 		tlshd_log_debug("Unrecognized handshake type (%d)",
 				parms.handshake_type);
 	}
 
+deinit:
 	gnutls_global_deinit();
 
 out:
