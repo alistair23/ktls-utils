@@ -47,6 +47,7 @@ struct tlshd_handshake_parms {
 	uint32_t	handshake_type;	/**< Handshake interaction to perform */
 	unsigned int	timeout_ms;	/**< How long to wait for completion */
 	uint32_t	auth_mode;	/**< x.509, PSK, etc. */
+	uint32_t	key_update_type;
 	key_serial_t	keyring;	/**< Keyring containing auth material */
 	key_serial_t	x509_cert;	/**< Key serial of our x.509 cert */
 	key_serial_t	x509_privkey;	/**< Key serial of our x.509 private key */
@@ -54,6 +55,7 @@ struct tlshd_handshake_parms {
 	GArray		*remote_peerids; /**< Peer identities presented by clients */
 
 	unsigned int	session_status;	/**< Handshake completion status */
+	key_serial_t	key_serial;
 	/*@}*/
 };
 
