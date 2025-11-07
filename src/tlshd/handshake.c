@@ -307,8 +307,9 @@ void tlshd_service_socket(void)
 
 		switch (parms.key_update_type) {
 		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
-			/* We don't expect a KeyUpdate response */
-			if (gnutls_session_key_update(session, 0))
+			tlshd_log_debug("We do expect a KeyUpdate response");
+			/* We do expect a KeyUpdate response */
+			if (gnutls_session_key_update(session, GNUTLS_KU_PEER))
 				goto deinit;
 
 			parms.session_status = tlshd_initialize_ktls(session, WRITE);
@@ -317,6 +318,7 @@ void tlshd_service_socket(void)
 			/* We received a KeyUpdate and the peer doesn't
 			 * expect a response
 			 */
+			tlshd_log_debug("We received a KeyUpdate and the peer doesn't expect a response");
 			if (gnutls_handshake_update_receiving_key(session))
 				goto deinit;
 
@@ -326,6 +328,7 @@ void tlshd_service_socket(void)
 			/* We received a KeyUpdate and the peer does
 			 * expect a response
 			 */
+			tlshd_log_debug("We received a KeyUpdate and the peer does expect a response");
 			if (gnutls_handshake_update_receiving_key(session))
 				goto deinit;
 
@@ -384,8 +387,9 @@ void tlshd_service_socket(void)
 
 		switch (parms.key_update_type) {
 		case HANDSHAKE_KEY_UPDATE_TYPE_SEND:
-			/* We don't expect a KeyUpdate response */
-			if (gnutls_session_key_update(session, 0))
+			/* We do expect a KeyUpdate response */
+			tlshd_log_debug("We do expect a KeyUpdate response");
+			if (gnutls_session_key_update(session, GNUTLS_KU_PEER))
 				goto deinit;
 
 			parms.session_status = tlshd_initialize_ktls(session, WRITE);
@@ -394,6 +398,7 @@ void tlshd_service_socket(void)
 			/* We received a KeyUpdate and the peer doesn't
 			 * expect a response
 			 */
+			tlshd_log_debug("We received a KeyUpdate and the peer doesn't expect a response");
 			if (gnutls_handshake_update_receiving_key(session))
 				goto deinit;
 
@@ -403,6 +408,7 @@ void tlshd_service_socket(void)
 			/* We received a KeyUpdate and the peer does
 			 * expect a response
 			 */
+			tlshd_log_debug("We received a KeyUpdate and the peer does expect a response");
 			if (gnutls_handshake_update_receiving_key(session))
 				goto deinit;
 
